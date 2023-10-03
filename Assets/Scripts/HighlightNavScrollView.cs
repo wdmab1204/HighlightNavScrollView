@@ -1,85 +1,111 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
-using UnityEngine.UI;
 using System.Linq;
+using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.UI;
 
-public class HighlightNavScrollView : MonoBehaviour
+namespace HNSV
 {
-    [SerializeField] int count;
-    [SerializeField] RectTransform content;
-    [SerializeField] Transform buttonGroup;
-    [SerializeField] ScrollRect scrollRect;
+    public class HighlightEvent : UnityEvent<int> { }
 
-    RectTransform[] views;
-    Button[] buttons;
-    List<float> viewPointList;
-
-    float ViewHeight(int i)
+    public class HighlightNavScrollView : ScrollRect
     {
-        if (i < 0) return views[0].sizeDelta.y;
-        return views[i].sizeDelta.y;
-    }
+        [SerializeField] int elementalCount;
+        [SerializeField] RectTransform buttonGroup;
+        [SerializeField] Color normalColor;
+        [SerializeField] Color highlightColor;
 
-    void Awake()
-    {
-        //init
-        scrollRect.onValueChanged.AddListener(OnChange);
-        float total = content.sizeDelta.y;
-        views = new RectTransform[count];
-        buttons = buttonGroup.GetComponentsInChildren<Button>();
-        viewPointList = new List<float>();
+        RectTransform[] views;
+        Button[] buttons;
+        Image[] buttonImages;
+        Image[] originalButtonImages;
+        List<float> viewPointList;
 
-        for (int i = 0; i < count; i++)
+        public HighlightEvent onHighlightChanged = new HighlightEvent();
+
+        float ViewHeight(int i)
         {
-            int index = i;
-            views[i] = content.GetChild(i).GetComponent<RectTransform>();
-            buttons[i].onClick.AddListener(() => MoveContent(index));
+            if (i < 0) return views[0].sizeDelta.y;
+            return views[i].sizeDelta.y;
         }
 
-        viewPointList.Add(ViewHeight(0) / 2 - ViewHeight(0));
-        for (int i = 0; i < count; i++)
+        protected override void Awake()
         {
-            var t = ViewHeight(i) / 2 + ViewHeight(i - 1) / 2;
-            viewPointList.Add(viewPointList.Last() + t);
+            onValueChanged.AddListener(OnChange);
+            float total = content.sizeDelta.y;
+            views = new RectTransform[elementalCount];
+            buttons = buttonGroup.GetComponentsInChildren<Button>();
+            buttonImages = new Image[elementalCount];
+            viewPointList = new List<float>();
+
+            for (int i = 0; i < elementalCount; i++)
+            {
+                int index = i;
+                views[i] = content.GetChild(i).GetComponent<RectTransform>();
+                buttons[i].onClick.AddListener(() => MoveContent(index));
+                buttonImages[i] = buttons[i].GetComponent<Image>();
+            }
+
+            originalButtonImages = buttonImages;
+            viewPointList.Add(ViewHeight(0) / 2 - ViewHeight(0));
+            for (int i = 0; i < elementalCount; i++)
+            {
+                var t = ViewHeight(i) / 2 + ViewHeight(i - 1) / 2;
+                viewPointList.Add(viewPointList.Last() + t);
+            }
+
+            OnChange(default);
+            base.Awake();
         }
 
-        OnChange(default);
-    }
-
-    private void OnChange(Vector2 arg0)
-    {
-        float scrollY = content.anchoredPosition.y;
-
-        for (int i = 0; i < count; i++)
+        protected override void OnDisable()
         {
-            if (scrollY >= viewPointList[i] && scrollY < viewPointList[i + 1]) Highlight(i, true);
-            else Highlight(i, false);
+            onValueChanged.RemoveListener(OnChange);
+            buttonImages = originalButtonImages;
+            for (int i = 0; i < elementalCount; i++)
+            {
+                int index = i;
+                buttons[i].onClick.RemoveListener(() => MoveContent(index));
+            }
+            base.OnDisable();
         }
-    }
 
-    private void Highlight(int index, bool on)
-    {
-        if (on)
+        private void OnChange(Vector2 arg0)
         {
-            buttons[index].GetComponent<Image>().color = new Color(1f, 0f, 0f, 1f);
+            float scrollY = content.anchoredPosition.y;
 
+            for (int i = 0; i < elementalCount; i++)
+            {
+                if (scrollY >= viewPointList[i] && scrollY < viewPointList[i + 1])
+                {
+                    onHighlightChanged?.Invoke(i);
+                    Highlight(i, true);
+                }
+                else Highlight(i, false);
+            }
         }
-        else
-        {
-            buttons[index].GetComponent<Image>().color = new Color(1f, 1f, 1f, 1f);
-        }
-    }
 
-    private void MoveContent(int index)
-    {
-        float posY = 0f;
-        while (index-- > 0)
+        private void Highlight(int index, bool on)
         {
-            posY += ViewHeight(index);
+            if (on)
+            {
+                buttonImages[index].color = highlightColor;
+            }
+            else
+                buttonImages[index].color = normalColor;
         }
-        scrollRect.velocity = Vector2.zero;
-        content.anchoredPosition = new Vector2(content.anchoredPosition.x, posY);
-        //content.DOAnchorPosY(posY, .2f).OnStart(() => { }).OnComplete(() => { });
+
+        private void MoveContent(int index)
+        {
+            float posY = 0f;
+            while (index-- > 0)
+            {
+                posY += ViewHeight(index);
+            }
+            velocity = Vector2.zero;
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x, posY);
+            //content.DOAnchorPosY(posY, .2f).OnStart(() => { }).OnComplete(() => { });
+        }
     }
 }
